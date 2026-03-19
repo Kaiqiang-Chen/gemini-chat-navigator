@@ -28,6 +28,7 @@
   let isPanelExpanded = false;       // 面板是否展开
   let searchQuery = '';              // 搜索关键词
   let questionIdMap = new Map();     // ID 到问题的映射
+  let currentConversationId = '';    // 当前对话ID（用于检测对话切换）
 
   // ==================== DOM 元素 ====================
   let panel = null;
@@ -577,6 +578,9 @@
     log('Element:', element);
     log('Element rect:', element.getBoundingClientRect());
 
+    // 先强制展开面板
+    expandPanel();
+
     // 直接使用 scrollIntoView，这是最可靠的方法
     try {
       element.scrollIntoView({
@@ -592,10 +596,12 @@
     highlightElement(element);
     highlightDirectoryItem(id);
 
-    // 收缩面板
-    setTimeout(() => {
-      collapsePanel();
-    }, 300);
+    // 不再自动收缩，等待用户鼠标离开展开界面
+  }
+
+  // 获取当前对话ID（通过URL）
+  function getCurrentConversationId() {
+    return window.location.href;
   }
 
   // 重新扫描消息
@@ -603,7 +609,26 @@
     log('Rescanning messages...');
     questions = [];
     questionIdMap.clear();
+    // 清除所有元素的gcn标记
+    document.querySelectorAll('[data-gcn-id]').forEach(el => {
+      delete el.dataset.gcnId;
+    });
+    document.querySelectorAll('[data-gcn-processed]').forEach(el => {
+      delete el.dataset.gcnProcessed;
+    });
     scanExistingMessages();
+  }
+
+  // 检查是否切换了对话
+  function checkConversationChange() {
+    const newId = getCurrentConversationId();
+    if (newId !== currentConversationId) {
+      log('Conversation changed, rescanning...');
+      log('Old ID:', currentConversationId);
+      log('New ID:', newId);
+      currentConversationId = newId;
+      rescanMessages();
+    }
   }
 
   // 高亮元素
@@ -708,6 +733,9 @@
   // 设置 DOM 监听器
   function setupMutationObserver() {
     const observer = new MutationObserver(debounce((mutations) => {
+      // 先检查是否切换了对话
+      checkConversationChange();
+
       let hasNewMessages = false;
 
       // 只检查新添加的节点
@@ -767,6 +795,18 @@
       childList: true,
       subtree: true
     });
+
+    // 监听URL变化（检测对话切换）
+    let lastUrl = location.href;
+    window.addEventListener('popstate', () => {
+      checkConversationChange();
+    });
+    new MutationObserver(() => {
+      if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        checkConversationChange();
+      }
+    }).observe(document.querySelector('head') || document, { subtree: true, childList: true });
   }
 
   // 初始化
@@ -786,6 +826,9 @@
     if (!window.location.hostname.includes('gemini.google.com')) {
       return;
     }
+
+    // 初始化对话ID
+    currentConversationId = getCurrentConversationId();
 
     // 创建面板
     createPanel();
