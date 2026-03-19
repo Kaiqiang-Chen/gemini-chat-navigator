@@ -796,17 +796,29 @@
       subtree: true
     });
 
-    // 监听URL变化（检测对话切换）
+    // 监听URL变化（检测对话切换）- 多种方式确保能检测到
     let lastUrl = location.href;
+
+    // 方式1: popstate事件
     window.addEventListener('popstate', () => {
       checkConversationChange();
     });
+
+    // 方式2: MutationObserver监听head变化
     new MutationObserver(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         checkConversationChange();
       }
     }).observe(document.querySelector('head') || document, { subtree: true, childList: true });
+
+    // 方式3: 定期检查URL变化（最可靠，针对SPA应用）
+    setInterval(() => {
+      if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        checkConversationChange();
+      }
+    }, 500);
   }
 
   // 初始化
