@@ -29,7 +29,7 @@
   let searchQuery = '';              // 搜索关键词
   let questionIdMap = new Map();     // ID 到问题的映射
   let currentConversationId = '';    // 当前对话ID（用于检测对话切换）
-  let lastMessageElements = new Set(); // 上一次检测到的消息元素
+  let lastMessageTexts = new Set();  // 上一次检测到的消息文本
 
   // ==================== DOM 元素 ====================
   let panel = null;
@@ -635,20 +635,20 @@
   // 检查是否切换了对话 - 基于DOM元素变化
   function checkConversationChangeByDOM() {
     const currentMessages = findUserMessages();
-    const currentIds = new Set(currentMessages.map(el => el.dataset.gcnId));
+    const currentTexts = new Set(currentMessages.map(el => extractMessageText(el)));
 
-    // 如果之前有消息但现在一个都没了，或者消息元素完全不同了
-    if (lastMessageElements.size > 0 && currentMessages.length > 0) {
+    // 如果之前有消息但现在消息完全不同了
+    if (lastMessageTexts.size > 0 && currentMessages.length > 0) {
       let found = 0;
-      for (const id of lastMessageElements) {
-        if (currentIds.has(id)) {
+      for (const text of lastMessageTexts) {
+        if (currentTexts.has(text)) {
           found++;
         }
       }
-      // 如果之前的消息元素都不在当前页面上，说明切换了对话
+      // 如果之前的消息文本都不在当前对话中，说明切换了对话
       if (found === 0) {
         log('Conversation changed (DOM), rescanning...');
-        log('Old messages count:', lastMessageElements.size);
+        log('Old messages count:', lastMessageTexts.size);
         log('New messages count:', currentMessages.length);
         currentConversationId = getCurrentConversationId();
         rescanMessages();
@@ -656,11 +656,12 @@
       }
     }
 
-    // 更新记录
-    lastMessageElements.clear();
+    // 只有在没有检测到对话切换时才更新记录
+    lastMessageTexts.clear();
     currentMessages.forEach(el => {
-      if (el.dataset.gcnId) {
-        lastMessageElements.add(el.dataset.gcnId);
+      const text = extractMessageText(el);
+      if (text) {
+        lastMessageTexts.add(text);
       }
     });
 
@@ -761,10 +762,10 @@
       }
     });
 
-    // 记录当前消息元素
-    lastMessageElements.clear();
+    // 记录当前消息文本
+    lastMessageTexts.clear();
     questions.forEach(q => {
-      lastMessageElements.add(q.id);
+      lastMessageTexts.add(q.text);
     });
 
     if (messages.length > 0) {
