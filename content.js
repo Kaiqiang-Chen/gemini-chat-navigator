@@ -29,6 +29,7 @@
   let searchQuery = '';              // 搜索关键词
   let questionIdMap = new Map();     // ID 到问题的映射
   let currentConversationId = '';    // 当前对话ID（用于检测对话切换）
+  let lastMessageElements = new Set(); // 上一次检测到的消息元素
 
   // ==================== DOM 元素 ====================
   let panel = null;
@@ -619,16 +620,51 @@
     scanExistingMessages();
   }
 
-  // 检查是否切换了对话
+  // 检查是否切换了对话 - 基于URL变化
   function checkConversationChange() {
     const newId = getCurrentConversationId();
     if (newId !== currentConversationId) {
-      log('Conversation changed, rescanning...');
+      log('Conversation changed (URL), rescanning...');
       log('Old ID:', currentConversationId);
       log('New ID:', newId);
       currentConversationId = newId;
       rescanMessages();
     }
+  }
+
+  // 检查是否切换了对话 - 基于DOM元素变化
+  function checkConversationChangeByDOM() {
+    const currentMessages = findUserMessages();
+    const currentIds = new Set(currentMessages.map(el => el.dataset.gcnId));
+
+    // 如果之前有消息但现在一个都没了，或者消息元素完全不同了
+    if (lastMessageElements.size > 0 && currentMessages.length > 0) {
+      let found = 0;
+      for (const id of lastMessageElements) {
+        if (currentIds.has(id)) {
+          found++;
+        }
+      }
+      // 如果之前的消息元素都不在当前页面上，说明切换了对话
+      if (found === 0) {
+        log('Conversation changed (DOM), rescanning...');
+        log('Old messages count:', lastMessageElements.size);
+        log('New messages count:', currentMessages.length);
+        currentConversationId = getCurrentConversationId();
+        rescanMessages();
+        return true;
+      }
+    }
+
+    // 更新记录
+    lastMessageElements.clear();
+    currentMessages.forEach(el => {
+      if (el.dataset.gcnId) {
+        lastMessageElements.add(el.dataset.gcnId);
+      }
+    });
+
+    return false;
   }
 
   // 高亮元素
@@ -725,6 +761,12 @@
       }
     });
 
+    // 记录当前消息元素
+    lastMessageElements.clear();
+    questions.forEach(q => {
+      lastMessageElements.add(q.id);
+    });
+
     if (messages.length > 0) {
       renderQuestionList();
     }
@@ -733,7 +775,13 @@
   // 设置 DOM 监听器
   function setupMutationObserver() {
     const observer = new MutationObserver(debounce((mutations) => {
-      // 先检查是否切换了对话
+      // 先检查是否切换了对话（基于DOM变化）
+      const conversationChanged = checkConversationChangeByDOM();
+
+      // 如果对话已切换，跳过后续处理
+      if (conversationChanged) return;
+
+      // 再检查URL变化
       checkConversationChange();
 
       let hasNewMessages = false;
